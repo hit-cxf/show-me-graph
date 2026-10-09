@@ -1,0 +1,68 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import {chromium} from 'playwright';
+import {layoutPapers} from './src/paper-layout.js';
+const base=process.env.SMG_URL||'http://127.0.0.1:4317';
+const get=async path=>{const r=await fetch(base+path);assert.equal(r.status,200,path);return r.json();};
+const manifest=await get('/api/manifest'), graph=await get('/api/graph'), data=await get('/api/evidence');
+const initialState=(await get('/api/knowledge')).state;
+const evidence=new Map(data.evidence.map(x=>[x.id,x])), entities=new Set(graph.entities.map(x=>x.id));
+const selectedPapers=manifest.papers.filter(p=>['qwen-image-2.0','sd3','dc-ae'].includes(p.paper_id));
+const positions=layoutPapers(selectedPapers,graph.relations),root=positions.get('qwen-image-2.0'),sd=positions.get('sd3'),dc=positions.get('dc-ae');
+assert(root.z<sd.z&&root.z<dc.z,'Citation targets occupy a later layer');
+assert(sd.x!==dc.x,'Sibling citations branch instead of overlapping');
+assert.notEqual((sd.x-root.x)*(dc.z-root.z)-(dc.x-root.x)*(sd.z-root.z),0,'Default three papers are not collinear');
+assert.deepEqual(positions,layoutPapers([...selectedPapers].reverse(),[...graph.relations].reverse()));
+const cycle=layoutPapers([{paper_id:'a'},{paper_id:'b'},{paper_id:'isolated'}],[{source:'paper-a',target:'paper-b'},{source:'paper-b',target:'paper-a'}]);
+assert.equal(cycle.size,3);assert([...cycle.values()].every(p=>Number.isFinite(p.x)&&Number.isFinite(p.z)));
+assert(manifest.papers.length>=10);assert.equal(entities.size,graph.entities.length);
+for(const r of graph.relations){assert(entities.has(r.source)&&entities.has(r.target),r.id);assert(r.source_ids.length>0,r.id);r.source_ids.forEach(id=>assert(evidence.has(id),id));}
+for(const e of evidence.values()){const verified=await get(`/api/evidence/${e.id}`);assert(verified.artifact_verified);assert.equal(verified.sha256,e.sha256);assert(e.page>=1&&e.bboxes.length>0);}
+assert.equal((await fetch(base+'/api/evidence/does-not-exist')).status,404);
+assert.equal((await fetch(base+'/api/artifacts/does-not-exist/file')).status,404);
+assert.equal((await fetch(base+'/api/graph',{method:'POST'})).status,405);
+const executablePath=process.env.SMG_BROWSER||'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+const browser=await chromium.launch({headless:true,executablePath});
+const page=await browser.newPage({viewport:{width:1600,height:1000}}), errors=[];
+page.on('pageerror',e=>errors.push(e.message));
+try{
+ await page.goto(base);await page.locator('#papers .paper-row').first().waitFor();
+ assert.equal(await page.locator('html').getAttribute('data-theme'),'light');
+ await page.locator('#preset-all').click();assert.equal((await page.locator('#paper-count').innerText()),`${manifest.papers.length} / ${manifest.papers.length}`);
+ assert.equal(await page.locator('#select-all-papers').isChecked(),true);
+ await page.locator('#select-all-papers').uncheck();assert.equal((await page.locator('#paper-count').innerText()),`0 / ${manifest.papers.length}`);
+ await page.locator('#select-all-papers').check();assert.equal((await page.locator('#paper-count').innerText()),`${manifest.papers.length} / ${manifest.papers.length}`);
+ await page.locator('#preset-anchor').click();assert.equal((await page.locator('#paper-count').innerText()),`1 / ${manifest.papers.length}`);
+ await page.locator('#preset-core').click();assert.equal((await page.locator('#paper-count').innerText()),`6 / ${manifest.papers.length}`);
+ for(const view of ['papers','paper','technology','space']){await page.locator(`[data-view="${view}"]`).click();await page.waitForTimeout(550);assert(await page.locator(`[data-view="${view}"]`).evaluate(e=>e.classList.contains('active')));assert((await page.locator('#status').innerText()).includes('个可见节点'));if(view==='papers'||view==='technology')await page.screenshot({path:`../results/prototype-${view}-screenshot.png`});}
+ assert(!(await page.locator('#node-picker').innerText()).includes('undefined'));
+ await page.screenshot({path:'../results/prototype-space-screenshot.png'});
+ await page.locator('#node-picker').selectOption({label:graph.entities.find(entity=>entity.id==='swiglu').label});await page.locator('#pdf-page').waitFor({state:'visible'});
+ assert((await page.locator('#quote').innerText()).includes('SwiGLU'));
+ assert((await page.locator('#evidence-meta').innerText()).includes('p.12'));
+ assert(await page.locator('#highlights .highlight').count()>0);
+ assert(await page.locator('#pdf-canvas').evaluate(c=>c.width>500&&c.height>500));
+ await page.screenshot({path:'../results/prototype-pdf-screenshot.png'});
+ const defaultInspector=await page.locator('#inspector').boundingBox(),defaultPDF=await page.locator('#pdf-canvas').boundingBox();
+ await page.locator('#inspector-toggle').click();await page.waitForTimeout(500);
+ const expandedInspector=await page.locator('#inspector').boundingBox(),expandedPDF=await page.locator('#pdf-canvas').boundingBox();
+ assert.equal(await page.locator('#inspector-toggle').getAttribute('aria-expanded'),'true');
+ assert(expandedInspector.width>defaultInspector.width*1.5);assert(expandedPDF.width>defaultPDF.width*1.5);
+ assert(expandedInspector.x+expandedInspector.width<=1601);assert((await page.locator('#scene').boundingBox()).width>250);
+ assert(await page.locator('#highlights .highlight').count()>0);
+ await page.screenshot({path:'../results/prototype-expanded-screenshot.png'});
+ await page.locator('#inspector-toggle').click();await page.waitForTimeout(300);
+ await page.locator('#theme-toggle').click();assert.equal(await page.locator('html').getAttribute('data-theme'),'dark');
+ await page.waitForTimeout(500);await page.screenshot({path:'../results/prototype-night-screenshot.png'});
+ await page.reload();await page.locator('#papers .paper-row').first().waitFor();assert.equal(await page.locator('html').getAttribute('data-theme'),'dark');
+ await page.locator('#theme-toggle').click();assert.equal(await page.locator('html').getAttribute('data-theme'),'light');
+ const gatingLabel=graph.relations.find(relation=>relation.id==='r06').label;
+ const edge=await page.locator('#node-picker option').evaluateAll((xs,label)=>xs.find(o=>o.textContent.endsWith(`：${label}`))?.value,gatingLabel);
+ assert(edge);await page.locator('#node-picker').selectOption(edge);await page.locator('#pdf-page').waitFor({state:'visible'});
+ assert.equal(await page.locator('#selection h2').innerText(),gatingLabel);
+ await page.locator('[data-view="paper"]').click();await page.waitForTimeout(600);await page.screenshot({path:'../results/prototype-slice-screenshot.png'});
+ const checkbox=page.getByRole('checkbox',{name:'显示 Stable Diffusion 3',exact:true});await Promise.all([page.waitForResponse(r=>r.url().endsWith('/api/knowledge/state')&&r.request().method()==='PUT'),checkbox.uncheck()]);assert((await page.locator('#paper-count').innerText()).startsWith('5 /'));
+ assert.deepEqual(errors,[]);
+ const report={date:new Date().toISOString(),browser:'Google Chrome headless (explicit executable)',api:{papers:manifest.papers.length,entities:graph.entities.length,relations:graph.relations.length,evidence:evidence.size,artifact_hash_checks:'passed',unknown_ids:404,write_method:405},browser_checks:['paper range presets','four view switches','node evidence quote/page/highlight','relation evidence','paper visibility filter','expand and restore inspector','PDF widens with inspector','light and dark themes','theme persists after reload','no uncaught errors'],status:'passed',limitations:['Agent-curated graph, not automatic extraction','No broad layout/performance or accessibility benchmark','No Zotero write performed by these checks']};
+ await fs.writeFile('../results/prototype-check.json',JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify(report,null,2));
+}finally{await browser.close();const response=await fetch(base+'/api/knowledge/state',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(initialState)});assert(response.ok,'Restore display selection after check');}

@@ -1,0 +1,10 @@
+node_modules/
+.DS_Store
+experiments/vendor/
+experiments/envs/
+experiments/prototype/dist/
+experiments/prototype/.runtime/
+experiments/corpus/
+research/
+__pycache__/
+experiments/results/

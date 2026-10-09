@@ -1,0 +1,25 @@
+{
+  "name": "show-me-graph",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "start": "node service.mjs start",
+    "stop": "node service.mjs stop",
+    "status": "node service.mjs status",
+    "serve": "node server.mjs",
+    "check": "node check.mjs",
+    "test": "node --test --test-concurrency=1 api.test.mjs sync.test.mjs preferences.test.mjs technical-layout.test.mjs relation-view.test.mjs viewport-navigation.test.mjs"
+  },
+  "dependencies": {
+    "3d-force-graph": "1.80.1",
+    "pdfjs-dist": "6.4.299",
+    "three": "0.186.1"
+  },
+  "devDependencies": {
+    "vite": "8.3.2",
+    "playwright": "1.63.0"
+  }
+}
