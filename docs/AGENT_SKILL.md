@@ -4,21 +4,22 @@
 
 ## 安装
 
-本项目已建立下面三个项目级目录链接，分别供 Codex、Claude Code 和 CodeBuddy Code 自动发现，均指向同一个规范包。迁移项目时可重建这些链接（也可以复制整个目录，包含 `scripts/` 与 `references/`）：
+本项目已建立三个项目级目录链接，分别供 Codex、Claude Code 和 CodeBuddy Code 发现，均指向同一个规范包。在仓库内启动新的 Agent 会话即可使用。要在其他项目调用本机服务，在仓库根目录运行对应的用户级安装命令（复制完整 Skill 包，包含 `scripts/` 与 `references/`）：
 
 ```sh
-mkdir -p .agents/skills .claude/skills .codebuddy/skills
-ln -s ../../skills/show-me-graph .agents/skills/show-me-graph
-ln -s ../../skills/show-me-graph .claude/skills/show-me-graph
-ln -s ../../skills/show-me-graph .codebuddy/skills/show-me-graph
+python3 scripts/install-skill.py codex
+python3 scripts/install-skill.py claude
+python3 scripts/install-skill.py codebuddy
 ```
+
+若只想安装到另一个项目，可以运行 `python3 scripts/install-skill.py codex --project /path/to/project`（将 `codex` 换成目标 Agent）。安装器不会覆盖已有同名 Skill；更新复制版时先自行移走旧目录再重新安装。原仓库的项目级目录链接仍在 `.agents/skills/`、`.claude/skills/` 和 `.codebuddy/skills/`。
 
 - Codex：项目级目录为 `.agents/skills/<name>/SKILL.md`；也可放在用户级 `~/.agents/skills/`。[Codex 官方说明](https://learn.chatgpt.com/docs/build-skills#where-codex-loads-local-skills)
 - Claude Code：项目级目录为 `.claude/skills/<name>/SKILL.md`；也可放在 `~/.claude/skills/`。[Claude Code 官方说明](https://code.claude.com/docs/en/skills#where-skills-live)
 - CodeBuddy Code（与 WorkBuddy 相关的编程客户端）：项目级目录为 `.codebuddy/skills/<name>/SKILL.md`；也可放在 `~/.codebuddy/skills/`。[官方说明](https://www.workbuddy.ai/docs/zh/cli/skills)
 - Tencent WorkBuddy 桌面客户端提供自定义 Skill 和技能管理入口；此处保留标准包供其导入。该客户端在本机未安装，尚不能声称已实测其导入路径或本地服务连接。[WorkBuddy 官方自定义 Skill 指南](https://www.workbuddy.ai/docs/zh/workbuddy/From-Beginner-to-Expert-Guide/Practice-Cases/Create-Skills)
 
-这些链接命令用于 macOS/Linux；不支持符号链接的环境直接复制 `skills/show-me-graph` 到相应目录。新建 Agent 会话后可明确说“使用 show-me-graph Skill 调查这篇论文”。运行中的 Agent 若没有重新扫描 Skill 目录，需要开启新会话。不要把同名 Skill 安装在多个位置后假定内容会合并。
+项目级链接在支持符号链接的环境中可直接使用；不支持符号链接时用上述安装器复制 Skill。新建 Agent 会话后可明确说“使用 show-me-graph Skill 调查这篇论文”。运行中的 Agent 若没有重新扫描 Skill 目录，需要开启新会话。不要把同名 Skill 安装在多个位置后假定内容会合并。
 
 更新项目内的规范包后，符号链接安装会读取同一份内容；通过复制或导入安装的客户端需要重新复制或导入整个包。已有会话若缓存了旧版 Skill，请重新加载 Skill 或开启新会话，才能使用新增的偏好流程。
 
